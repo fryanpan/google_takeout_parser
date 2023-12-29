@@ -343,6 +343,11 @@ class TakeoutParser:
         handlers = self._group_by_return_type(filter_type=filter_type)
         for _, result_tuples in handlers.items():
             for path, itr in result_tuples:
+                if filter_type is not None:
+                    # Filter the results to the specified type
+                    # This is necessary for entries in the dispatch map that can return
+                    # more than one type of result
+                    itr = filter(lambda x: isinstance(x, filter_type), itr)
                 self._log_handler(path, itr)
                 yield from itr
 
@@ -443,6 +448,11 @@ class TakeoutParser:
 
             def _func() -> Iterator[Res[_ret_type]]:  # type: ignore[valid-type]
                 for path, itr in result_tuples:
+                    if filter_type is not None:
+                        # Filter the results to the specified type
+                        # This is necessary for entries in the dispatch map that can return
+                        # more than one type of result
+                        itr = filter(lambda x: isinstance(x, filter_type), itr)
                     self._log_handler(path, itr)
                     yield from itr
 

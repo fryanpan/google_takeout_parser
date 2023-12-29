@@ -147,49 +147,195 @@ def test_chrome_history(tmp_path_f: Path) -> None:
     ]
 
 
+_TEST_PLACE_VISIT = {
+    "placeVisit": {
+        "location": {
+            "latitudeE7": 555555555,
+            "longitudeE7": -1066666666,
+            "placeId": "JK4E4P",
+            "address": "address",
+            "name": "name",
+            "sourceInfo": {"deviceTag": 987654321},
+            "locationConfidence": 60.45,
+        },
+        "duration": {
+            "startTimestamp": "2017-12-10T23:29:25.026Z",
+            "endTimestamp": "2017-12-11T01:20:06.106Z",
+        },
+        "placeConfidence": "MEDIUM_CONFIDENCE",
+        "centerLatE7": 555555555,
+        "centerLngE7": -1666666666,
+        "visitConfidence": 65.45,
+        "otherCandidateLocations": [
+            {
+                "latitudeE7": 423984239,
+                "longitudeE7": -1565656565,
+                "placeId": "XPRK4E4P",
+                "address": "address2",
+                "name": "name2",
+                "locationConfidence": 24.475897,
+            }
+        ],
+        "editConfirmationStatus": "NOT_CONFIRMED",
+        "locationConfidence": 55,
+        "placeVisitType": "SINGLE_PLACE",
+        "placeVisitImportance": "MAIN",
+    }
+}
+
+# Sample activity segment based on data from 2012 (missing most fields)
+_TEST_ACTIVITY_SEGMENT_BASIC = {
+    "activitySegment": {
+        "startLocation": {},
+        "endLocation": {},
+        "duration": {
+            "startTimestamp": "2012-12-06T04:09:31.087Z",
+            "endTimestamp": "2012-12-06T04:19:21.052Z",
+        },
+        "distance": 735,
+        "confidence": "LOW",
+        "activities": [
+            {"activityType": "WALKING", "probability": 0.0},
+            {"activityType": "CYCLING", "probability": 0.0},
+            {"activityType": "IN_VEHICLE", "probability": 0.0},
+        ],
+        "simplifiedRawPath": {
+            "points": [
+                {
+                    "latE7": -450339851,
+                    "lngE7": 1686552734,
+                    "accuracyMeters": 5,
+                    "timestamp": "2012-12-06T04:12:29.104Z",
+                }
+            ]
+        },
+        "editConfirmationStatus": "NOT_CONFIRMED",
+    }
+}
+
+# Sample activity from 2016
+_TEST_ACTIVITY_PARTIAL_WAYPOINT_PATH = {
+    "activitySegment": {
+        "startLocation": {"latitudeE7": 377624484, "longitudeE7": -1223967085},
+        "endLocation": {"latitudeE7": 377944635, "longitudeE7": -1224026022},
+        "duration": {
+            "startTimestamp": "2016-12-24T00:11:20.573Z",
+            "endTimestamp": "2016-12-24T00:32:23.034Z",
+        },
+        "distance": 4393,
+        "activityType": "IN_PASSENGER_VEHICLE",
+        "confidence": "LOW",
+        "activities": [
+            {"activityType": "IN_PASSENGER_VEHICLE", "probability": 42.59993179064075},
+            {"activityType": "CYCLING", "probability": 31.740499796503187},
+            {"activityType": "IN_BUS", "probability": 18.35780278904862},
+        ],
+        "waypointPath": {
+            "waypoints": [
+                {"latE7": 377624588, "lngE7": -1223965377},
+                {"latE7": 377720146, "lngE7": -1223895111},
+                {"latE7": 377943038, "lngE7": -1224025726},
+            ],
+            "source": "INFERRED",
+        },
+        "simplifiedRawPath": {
+            "points": [
+                {
+                    "latE7": 377721165,
+                    "lngE7": -1223895764,
+                    "accuracyMeters": 10,
+                    "timestamp": "2016-12-24T00:16:18.999Z",
+                }
+            ]
+        },
+        "editConfirmationStatus": "NOT_CONFIRMED",
+    }
+}
+
+# Sample activity segment based on data from 2023 with more complete data
+_TEST_ACTIVITY_SEGMENT_FULL = {
+    "activitySegment": {
+        "startLocation": {
+            "latitudeE7": 377605210,
+            "longitudeE7": -1224310834,
+            "sourceInfo": {"deviceTag": -1935307820},
+        },
+        "endLocation": {
+            "latitudeE7": 377605242,
+            "longitudeE7": -1224310477,
+            "sourceInfo": {"deviceTag": -1935307820},
+        },
+        "duration": {
+            "startTimestamp": "2023-12-01T01:50:29Z",
+            "endTimestamp": "2023-12-01T02:03:13.834Z",
+        },
+        "distance": 642,
+        "activityType": "WALKING",
+        "confidence": "HIGH",
+        "activities": [
+            {"activityType": "WALKING", "probability": 84.14630889892578},
+            {"activityType": "STILL", "probability": 11.461445689201355},
+            {"activityType": "CYCLING", "probability": 2.6100903749465942},
+            {"activityType": "RUNNING", "probability": 0.8146878331899643},
+            {"activityType": "IN_PASSENGER_VEHICLE", "probability": 0.791911780834198},
+            {"activityType": "SKIING", "probability": 0.038399442564696074},
+            {"activityType": "IN_BUS", "probability": 0.035894475877285004},
+            {"activityType": "MOTORCYCLING", "probability": 0.03407726180739701},
+            {"activityType": "IN_FERRY", "probability": 0.02370273577980697},
+            {"activityType": "IN_SUBWAY", "probability": 0.01822529739001766},
+            {"activityType": "IN_TRAIN", "probability": 0.015967445506248623},
+            {"activityType": "SAILING", "probability": 0.004841846021008678},
+            {"activityType": "IN_TRAM", "probability": 0.004207661550026387},
+            {"activityType": "FLYING", "probability": 2.4401106202276424e-4},
+            {"activityType": "IN_VEHICLE", "probability": 5.013597093039834e-7},
+        ],
+        "waypointPath": {
+            "waypoints": [
+                {"latE7": 377604026, "lngE7": -1224310760},
+                {"latE7": 377607688, "lngE7": -1224304504},
+                {"latE7": 377612037, "lngE7": -1224286727},
+                {"latE7": 377604217, "lngE7": -1224307250},
+            ],
+            "source": "INFERRED",
+            "roadSegment": [
+                {"placeId": "ChIJTTaLQxp-j4ARGyHL8nP2V58", "duration": "50s"},
+                {"placeId": "ChIJQU0YOxp-j4ARzltYMqf2ybc", "duration": "128s"},
+                {"placeId": "ChIJxzaaiBl-j4ARmhZgp3OF8MM", "duration": "168s"},
+                {"placeId": "ChIJxzaaiBl-j4ARmxZgp3OF8MM", "duration": "214s"},
+                {"placeId": "ChIJQU0YOxp-j4ARzltYMqf2ybc", "duration": "184s"},
+                {"placeId": "ChIJTTaLQxp-j4ARGyHL8nP2V58", "duration": "18s"},
+            ],
+            "distanceMeters": 593.2073502973352,
+            "travelMode": "WALK",
+            "confidence": 0.9991572432077641,
+        },
+        "simplifiedRawPath": {
+            "points": [
+                {
+                    "latE7": 377612610,
+                    "lngE7": -1224286804,
+                    "accuracyMeters": 35,
+                    "timestamp": "2023-12-01T01:56:56Z",
+                }
+            ]
+        },
+    }
+}
+
+
 def test_semantic_location_history(tmp_path_f: Path) -> None:
     data = {
         "timelineObjects": [
-            {
-                "placeVisit": {
-                    "location": {
-                        "latitudeE7": 555555555,
-                        "longitudeE7": -1066666666,
-                        "placeId": "JK4E4P",
-                        "address": "address",
-                        "name": "name",
-                        "sourceInfo": {"deviceTag": 987654321},
-                        "locationConfidence": 60.45,
-                    },
-                    "duration": {
-                        "startTimestamp": "2017-12-10T23:29:25.026Z",
-                        "endTimestamp": "2017-12-11T01:20:06.106Z",
-                    },
-                    "placeConfidence": "MEDIUM_CONFIDENCE",
-                    "centerLatE7": 555555555,
-                    "centerLngE7": -1666666666,
-                    "visitConfidence": 65.45,
-                    "otherCandidateLocations": [
-                        {
-                            "latitudeE7": 423984239,
-                            "longitudeE7": -1565656565,
-                            "placeId": "XPRK4E4P",
-                            "address": "address2",
-                            "name": "name2",
-                            "locationConfidence": 24.475897,
-                        }
-                    ],
-                    "editConfirmationStatus": "NOT_CONFIRMED",
-                    "locationConfidence": 55,
-                    "placeVisitType": "SINGLE_PLACE",
-                    "placeVisitImportance": "MAIN",
-                }
-            }
+            _TEST_PLACE_VISIT,
+            _TEST_ACTIVITY_SEGMENT_BASIC,
+            _TEST_ACTIVITY_PARTIAL_WAYPOINT_PATH,
+            _TEST_ACTIVITY_SEGMENT_FULL,
         ]
     }
     fp = tmp_path_f / "file"
     fp.write_text(json.dumps(data))
     res = list(prj._parse_semantic_location_history(fp))
+
     obj = res[0]
     assert not isinstance(obj, Exception)
     # remove JSON, compare manually below
@@ -225,4 +371,143 @@ def test_semantic_location_history(tmp_path_f: Path) -> None:
                 sourceInfoDeviceTag=None,
             )
         ],
+    )
+
+    obj1 = res[1]
+    assert obj1 == models.ActivitySegment(
+        startTime=datetime.datetime(
+            2012, 12, 6, 4, 9, 31, 87000, tzinfo=datetime.timezone.utc
+        ),
+        endTime=datetime.datetime(
+            2012, 12, 6, 4, 19, 21, 52000, tzinfo=datetime.timezone.utc
+        ),
+        distance=735,
+        confidence="LOW",
+        activities=[
+            models.ActivitySegmentActivity("WALKING", 0.0),
+            models.ActivitySegmentActivity("CYCLING", 0.0),
+            models.ActivitySegmentActivity("IN_VEHICLE", 0.0),
+        ],
+        simplifiedRawPath=models.SimplifiedRawPath(
+            points=[
+                models.RawPathPoint(
+                    lat=-45.0339851,
+                    lng=168.6552734,
+                    accuracyMeters=5,
+                    timestamp=datetime.datetime(
+                        2012, 12, 6, 4, 12, 29, 104000, tzinfo=datetime.timezone.utc
+                    ),
+                )
+            ]
+        ),
+        editConfirmationStatus="NOT_CONFIRMED",
+    )
+
+    obj2 = res[2]
+    assert obj2 == models.ActivitySegment(
+        startLat=37.7624484,
+        startLng=-122.3967085,
+        endLat=37.7944635,
+        endLng=-122.4026022,
+        startTime=datetime.datetime(
+            2016, 12, 24, 0, 11, 20, 573000, tzinfo=datetime.timezone.utc
+        ),
+        endTime=datetime.datetime(
+            2016, 12, 24, 0, 32, 23, 34000, tzinfo=datetime.timezone.utc
+        ),
+        distance=4393,
+        activityType="IN_PASSENGER_VEHICLE",
+        confidence="LOW",
+        activities=[
+            models.ActivitySegmentActivity("IN_PASSENGER_VEHICLE", 42.59993179064075),
+            models.ActivitySegmentActivity("CYCLING", 31.740499796503187),
+            models.ActivitySegmentActivity("IN_BUS", 18.35780278904862),
+        ],
+        waypointPath=models.WaypointPath(
+            waypoints=[
+                models.Waypoint(37.7624588, -122.3965377),
+                models.Waypoint(37.7720146, -122.3895111),
+                models.Waypoint(37.7943038, -122.4025726),
+            ],
+            source="INFERRED",
+        ),
+        simplifiedRawPath=models.SimplifiedRawPath(
+            points=[
+                models.RawPathPoint(
+                    lat=37.7721165,
+                    lng=-122.3895764,
+                    accuracyMeters=10,
+                    timestamp=datetime.datetime(
+                        2016, 12, 24, 0, 16, 18, 999000, tzinfo=datetime.timezone.utc
+                    ),
+                )
+            ]
+        ),
+        editConfirmationStatus="NOT_CONFIRMED",
+    )
+
+    obj3 = res[3]
+    assert obj3 == models.ActivitySegment(
+        startLat=37.7605210,
+        startLng=-122.4310834,
+        endLat=37.7605242,
+        endLng=-122.4310477,
+        startTime=datetime.datetime(
+            2023, 12, 1, 1, 50, 29, 0, tzinfo=datetime.timezone.utc
+        ),
+        endTime=datetime.datetime(
+            2023, 12, 1, 2, 3, 13, 834000, tzinfo=datetime.timezone.utc
+        ),
+        distance=642,
+        activityType="WALKING",
+        confidence="HIGH",
+        activities=[
+            models.ActivitySegmentActivity("WALKING", 84.14630889892578),
+            models.ActivitySegmentActivity("STILL", 11.461445689201355),
+            models.ActivitySegmentActivity("CYCLING", 2.6100903749465942),
+            models.ActivitySegmentActivity("RUNNING", 0.8146878331899643),
+            models.ActivitySegmentActivity("IN_PASSENGER_VEHICLE", 0.791911780834198),
+            models.ActivitySegmentActivity("SKIING", 0.038399442564696074),
+            models.ActivitySegmentActivity("IN_BUS", 0.035894475877285004),
+            models.ActivitySegmentActivity("MOTORCYCLING", 0.03407726180739701),
+            models.ActivitySegmentActivity("IN_FERRY", 0.02370273577980697),
+            models.ActivitySegmentActivity("IN_SUBWAY", 0.01822529739001766),
+            models.ActivitySegmentActivity("IN_TRAIN", 0.015967445506248623),
+            models.ActivitySegmentActivity("SAILING", 0.004841846021008678),
+            models.ActivitySegmentActivity("IN_TRAM", 0.004207661550026387),
+            models.ActivitySegmentActivity("FLYING", 2.4401106202276424e-4),
+            models.ActivitySegmentActivity("IN_VEHICLE", 5.013597093039834e-7),
+        ],
+        waypointPath=models.WaypointPath(
+            waypoints=[
+                models.Waypoint(37.7604026, -122.4310760),
+                models.Waypoint(37.7607688, -122.4304504),
+                models.Waypoint(37.7612037, -122.4286727),
+                models.Waypoint(37.7604217, -122.4307250),
+            ],
+            source="INFERRED",
+            roadSegment=[
+                models.RoadSegment("ChIJTTaLQxp-j4ARGyHL8nP2V58", 50),
+                models.RoadSegment("ChIJQU0YOxp-j4ARzltYMqf2ybc", 128),
+                models.RoadSegment("ChIJxzaaiBl-j4ARmhZgp3OF8MM", 168),
+                models.RoadSegment("ChIJxzaaiBl-j4ARmxZgp3OF8MM", 214),
+                models.RoadSegment("ChIJQU0YOxp-j4ARzltYMqf2ybc", 184),
+                models.RoadSegment("ChIJTTaLQxp-j4ARGyHL8nP2V58", 18),
+            ],
+            distanceMeters=593.2073502973352,
+            travelMode="WALK",
+            confidence=0.9991572432077641,
+        ),
+        simplifiedRawPath=models.SimplifiedRawPath(
+            points=[
+                models.RawPathPoint(
+                    lat=37.7612610,
+                    lng=-122.4286804,
+                    accuracyMeters=35,
+                    timestamp=datetime.datetime(
+                        2023, 12, 1, 1, 56, 56, tzinfo=datetime.timezone.utc
+                    ),
+                )
+            ]
+        ),
     )

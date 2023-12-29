@@ -21,6 +21,8 @@ from typing import (
 )
 from dataclasses import dataclass
 
+from google_takeout_parser.time_utils import parse_json_utc_date
+
 from .common import Res
 
 Url = str
@@ -128,14 +130,14 @@ class Location(BaseEvent):
         return self.lat, self.lng, self.accuracy, int(self.dt.timestamp())
 
 
-# this is not cached as a model, its saved as JSON -- its a helper class that placevisit uses
+# This is not cached as a model, its saved as JSON -- its a helper class that PlaceVisit and ActivitySegment use
 @dataclass
 class CandidateLocation:
     lat: float
     lng: float
     address: Optional[str]
     name: Optional[str]
-    placeId: str
+    placeId: Optional[str]
     locationConfidence: Optional[float]  # missing in older (around 2014/15) history
     sourceInfoDeviceTag: Optional[int]
 
@@ -144,7 +146,7 @@ class CandidateLocation:
         return cls(
             address=data.get("address"),
             name=data.get("name"),
-            placeId=data["placeId"],
+            placeId=data.get("placeId"),
             locationConfidence=data.get("locationConfidence"),
             lat=data["latitudeE7"] / 1e7,
             lng=data["longitudeE7"] / 1e7,
@@ -184,6 +186,154 @@ class PlaceVisit(BaseEvent):
 
 
 @dataclass
+class ActivitySegmentActivity:
+    activityType: str
+    probability: float
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ActivitySegmentActivity:
+        return cls(
+            activityType=data["activityType"],
+            probability=data["probability"],
+        )
+
+
+@dataclass
+class Waypoint:
+    lat: float
+    lng: float
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Waypoint:
+        return cls(
+            lat=data["latE7"] / 1e7,
+            lng=data["lngE7"] / 1e7,
+        )
+
+
+@dataclass
+class RoadSegment:
+    placeId: str
+    duration: Optional[float] = None  # duration in seconds. may be ommitted occasionally
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> RoadSegment:
+        return cls(
+            placeId=data["placeId"],
+            duration=float(data["duration"].rstrip("s")) if "duration" in data else None,
+        )
+
+
+@dataclass
+class WaypointPath:
+    waypoints: List[Waypoint]
+    source: str
+    roadSegment: Optional[List[RoadSegment]] = None
+    distanceMeters: Optional[float] = None
+    travelMode: Optional[str] = None
+    confidence: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> WaypointPath:
+        roadSegment = (
+            [RoadSegment.from_dict(d) for d in data["roadSegment"]]
+            if data.get("roadSegment")
+            else None
+        )
+        return cls(
+            waypoints=[Waypoint.from_dict(d) for d in data["waypoints"]],
+            source=data["source"],
+            roadSegment=roadSegment,
+            distanceMeters=data.get("distanceMeters"),
+            travelMode=data.get("travelMode"),
+            confidence=data.get("confidence"),
+        )
+
+
+@dataclass
+class RawPathPoint:
+    lat: float
+    lng: float
+    accuracyMeters: float
+    timestamp: datetime
+
+    @classmethod
+    def from_dict(cls, data: Any) -> RawPathPoint:
+        return cls(
+            lat=data["latE7"] / 1e7,
+            lng=data["lngE7"] / 1e7,
+            accuracyMeters=data["accuracyMeters"],
+            timestamp=parse_json_utc_date(data["timestamp"]),
+        )
+
+
+@dataclass
+class SimplifiedRawPath:
+    points: List[RawPathPoint]
+
+    @classmethod
+    def from_list(cls, data: Any) -> SimplifiedRawPath:
+        return cls(
+            points=[RawPathPoint.from_dict(d) for d in data],
+        )
+
+
+@dataclass
+class ActivitySegment(BaseEvent):
+    """ActivitySegment is a single activity segment from the semantic location history
+    in the Location History data."""
+
+    # Start and end time from the duration field
+    startTime: datetime
+    endTime: datetime
+
+    # Distance in meters
+    distance: int
+
+    # Confidence in primary activity type (LOW, MEDIUM, HIGH)
+    confidence: str
+
+    # Activities and their probabilities
+    activities: List[ActivitySegmentActivity]
+
+    # Raw path without activity information
+    simplifiedRawPath: SimplifiedRawPath
+
+    # Information about the path taken for this activity
+    # Sometimes this may be missing
+    waypointPath: Optional[WaypointPath] = None
+
+    # Primary activity type (usually the highest probability activity from activities)
+    # Optional in earlier exports
+    activityType: Optional[str] = None
+
+    # Start location in latitudeE7 and longitude E7
+    # Optional in earlier exports
+    startLat: Optional[float] = None
+    startLng: Optional[float] = None
+
+    # End location in latitudeE7 and longitude E7
+    # Optional in earlier exports
+    endLat: Optional[float] = None
+    endLng: Optional[float] = None
+
+    editConfirmationStatus: Optional[str] = None
+
+    @property
+    def dt(self) -> datetime:  # type: ignore[override]
+        return self.startTime
+
+    @property
+    def key(self) -> Tuple[int, int, Optional[int]]:
+        """Unique key for this activity segment"""
+        return (
+            int(self.startTime.timestamp()),
+            int(self.endTime.timestamp()),
+            self.distance,
+        )
+
+
+@dataclass
 class ChromeHistory(BaseEvent):
     title: str
     url: Url
@@ -204,6 +354,7 @@ DEFAULT_MODEL_TYPE = Union[
     ChromeHistory,
     YoutubeComment,
     PlaceVisit,
+    ActivitySegment,
 ]
 
 CacheResults = Iterator[Res[DEFAULT_MODEL_TYPE]]

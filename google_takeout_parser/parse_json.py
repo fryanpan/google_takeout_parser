@@ -5,12 +5,15 @@ Lots of functions to transform the JSON from the Takeout to useful information
 import json
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Iterator, Any, Dict, Iterable, Optional, List
+from typing import Iterator, Any, Dict, Iterable, Optional, List, Union
 
 from .http_allowlist import convert_to_https_opt
 from .time_utils import parse_datetime_millis
 from .log import logger
 from .models import (
+    ActivitySegment,
+    ActivitySegmentActivity,
+    SimplifiedRawPath,
     Subtitles,
     LocationInfo,
     Activity,
@@ -20,6 +23,7 @@ from .models import (
     Location,
     PlaceVisit,
     CandidateLocation,
+    WaypointPath,
 )
 from .common import Res
 from .time_utils import parse_json_utc_date
@@ -157,7 +161,9 @@ def _check_required_keys(
     return None
 
 
-def _parse_semantic_location_history(p: Path) -> Iterator[Res[PlaceVisit]]:
+def _parse_semantic_location_history(
+    p: Path,
+) -> Iterator[Res[Union[PlaceVisit, ActivitySegment]]]:
     json_data = json.loads(p.read_text())
     if not isinstance(json_data, dict):
         yield RuntimeError(f"Locations: Top level item in '{p}' isn't a dict")
@@ -165,59 +171,134 @@ def _parse_semantic_location_history(p: Path) -> Iterator[Res[PlaceVisit]]:
         yield RuntimeError(f"Locations: no 'timelineObjects' key in '{p}'")
     timelineObjects = json_data.get("timelineObjects", [])
     for timelineObject in timelineObjects:
-        if "placeVisit" not in timelineObject:
-            # yield RuntimeError(f"PlaceVisit: no 'placeVisit' key in '{p}'")
-            continue
-        placeVisit = timelineObject["placeVisit"]
-        missing_key = _check_required_keys(placeVisit, _sem_required_keys)
-        if missing_key is not None:
-            yield RuntimeError(f"PlaceVisit: no '{missing_key}' key in '{p}'")
-            continue
         try:
-            location_json = placeVisit["location"]
-            missing_location_key = _check_required_keys(
-                location_json, _sem_required_location_keys
-            )
-            if missing_location_key is not None:
-                # handle these fully defensively, since nothing at all we can do if it's missing these properties
-                logger.debug(
-                    f"CandidateLocation: {p}, no key '{missing_location_key}' in {location_json}"
-                )
-                continue
-            location = CandidateLocation.from_dict(location_json)
-            duration = placeVisit["duration"]
-            yield PlaceVisit(
-                name=location.name,
-                address=location.address,
-                # separators=(",", ":") removes whitespace from json.dumps
-                otherCandidateLocations=[
-                    CandidateLocation.from_dict(pv)
-                    for pv in placeVisit.get("otherCandidateLocations", [])
-                ],
-                sourceInfoDeviceTag=location.sourceInfoDeviceTag,
-                placeConfidence=placeVisit.get("placeConfidence"),
-                placeVisitImportance=placeVisit.get("placeVisitImportance"),
-                placeVisitType=placeVisit.get("placeVisitType"),
-                visitConfidence=placeVisit.get("visitConfidence"),
-                editConfirmationStatus=placeVisit.get("editConfirmationStatus"),
-                placeId=location.placeId,
-                lng=location.lng,
-                lat=location.lat,
-                centerLat=float(placeVisit["centerLatE7"]) / 1e7
-                if "centerLatE7" in placeVisit
-                else None,
-                centerLng=float(placeVisit["centerLngE7"]) / 1e7
-                if "centerLngE7" in placeVisit
-                else None,
-                startTime=_parse_timestamp_key(duration, "startTimestamp"),
-                endTime=_parse_timestamp_key(duration, "endTimestamp"),
-                locationConfidence=location.locationConfidence,
-            )
-        except Exception as e:
-            if isinstance(e, KeyError):
-                yield RuntimeError(f"PlaceVisit: {p}, no key '{e}' in {placeVisit}")
+            if "placeVisit" in timelineObject:
+                result = _parse_place_visit(timelineObject["placeVisit"])
+            elif "activitySegment" in timelineObject:
+                result = _parse_activity_segment(timelineObject["activitySegment"])
             else:
-                yield e
+                yield RuntimeError(
+                    f"Unknown timeline object with keys {timelineObject.keys()} in path '{p}'"
+                )
+            if result is not None:
+                yield result
+        except Exception as e:
+            yield e
+
+
+def _parse_place_visit(placeVisit: Dict[str, Any]) -> Optional[PlaceVisit]:
+    missing_key = _check_required_keys(placeVisit, _sem_required_keys)
+    if missing_key is not None:
+        raise RuntimeError(f"PlaceVisit: no '{missing_key}' key in '{placeVisit}'")
+    try:
+        location_json = placeVisit["location"]
+        missing_location_key = _check_required_keys(
+            location_json, _sem_required_location_keys
+        )
+        if missing_location_key is not None:
+            # Handle these fully defensively, since nothing at all we can do if it's missing these properties
+            # If this comes up, quit early and don't try to create a PlaceVisit object
+            logger.debug(
+                f"CandidateLocation: {placeVisit}, no key '{missing_location_key}' in {location_json}"
+            )
+            return None
+        location = CandidateLocation.from_dict(location_json)
+        duration = placeVisit["duration"]
+        return PlaceVisit(
+            name=location.name,
+            address=location.address,
+            # separators=(",", ":") removes whitespace from json.dumps
+            otherCandidateLocations=[
+                CandidateLocation.from_dict(pv)
+                for pv in placeVisit.get("otherCandidateLocations", [])
+            ],
+            sourceInfoDeviceTag=location.sourceInfoDeviceTag,
+            placeConfidence=placeVisit.get("placeConfidence"),
+            placeVisitImportance=placeVisit.get("placeVisitImportance"),
+            placeVisitType=placeVisit.get("placeVisitType"),
+            visitConfidence=placeVisit.get("visitConfidence"),
+            editConfirmationStatus=placeVisit.get("editConfirmationStatus"),
+            placeId=location.placeId,
+            lng=location.lng,
+            lat=location.lat,
+            centerLat=float(placeVisit["centerLatE7"]) / 1e7
+            if "centerLatE7" in placeVisit
+            else None,
+            centerLng=float(placeVisit["centerLngE7"]) / 1e7
+            if "centerLngE7" in placeVisit
+            else None,
+            startTime=_parse_timestamp_key(duration, "startTimestamp"),
+            endTime=_parse_timestamp_key(duration, "endTimestamp"),
+            locationConfidence=location.locationConfidence,
+        )
+    except Exception as e:
+        if isinstance(e, KeyError):
+            raise RuntimeError(
+                f"PlaceVisit: {placeVisit}, no key '{e}' in {placeVisit}"
+            )
+        else:
+            raise e
+
+
+_sem_activity_segment_required_keys = ["duration", "activities"]
+
+
+def _parse_activity_segment(
+    activitySegment: Dict[str, Any]
+) -> Optional[ActivitySegment]:
+    missing_key = _check_required_keys(
+        activitySegment, _sem_activity_segment_required_keys
+    )
+    if missing_key is not None:
+        raise RuntimeError(
+            f"ActivitySegment: no '{missing_key}' key in '{activitySegment}'"
+        )
+    try:
+        if activitySegment["startLocation"]:
+            start = CandidateLocation.from_dict(activitySegment["startLocation"])
+            startLat: Union[float, None] = start.lat
+            startLng: Union[float, None] = start.lng
+        else:
+            startLat = startLng = None
+
+        if activitySegment["endLocation"]:
+            end = CandidateLocation.from_dict(activitySegment["endLocation"])
+            endLat: Union[float, None] = end.lat
+            endLng: Union[float, None] = end.lng
+        else:
+            endLat = endLng = None
+
+        return ActivitySegment(
+            startLat=startLat,
+            startLng=startLng,
+            endLat=endLat,
+            endLng=endLng,
+            startTime=parse_json_utc_date(
+                activitySegment["duration"]["startTimestamp"]
+            ),
+            endTime=parse_json_utc_date(activitySegment["duration"]["endTimestamp"]),
+            distance=activitySegment.get("distance"),
+            activityType=activitySegment.get("activityType"),
+            confidence=activitySegment.get("confidence"),
+            activities=[
+                ActivitySegmentActivity.from_dict(a)
+                for a in activitySegment.get("activities", [])
+            ],
+            waypointPath=WaypointPath.from_dict(activitySegment["waypointPath"])
+            if "waypointPath" in activitySegment
+            else None,
+            simplifiedRawPath=SimplifiedRawPath.from_list(
+                activitySegment.get("simplifiedRawPath", {}).get("points", [])
+            ),
+            editConfirmationStatus=activitySegment.get("editConfirmationStatus"),
+        )
+    except Exception as e:
+        if isinstance(e, KeyError):
+            raise RuntimeError(
+                f"ActivitySegment: {activitySegment}, no key '{e}' in {activitySegment}"
+            )
+        else:
+            raise e
 
 
 def _parse_chrome_history(p: Path) -> Iterator[Res[ChromeHistory]]:
